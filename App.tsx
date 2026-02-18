@@ -21,6 +21,10 @@ const SUPABASE_URL = 'https://qxihfpviufppdscsetbs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4aWhmcHZpdWZwcGRzY3NldGJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MzMxMzgsImV4cCI6MjA4NjUwOTEzOH0.YyvQh61ow7aP2670Ct157K_mBZjyvPZdvbtEdqkReB8';
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+const IconBell = ({ className }: { className?: string }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+);
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<ViewMode>(ViewMode.CRM);
@@ -30,43 +34,65 @@ const App: React.FC = () => {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [settings, setSettings] = useState<AppSettings>({ followUpThresholdDays: 7 });
   const [filter, setFilter] = useState('');
+  const [notificationStatus, setNotificationStatus] = useState<NotificationPermission>('default');
   
-  // PWA Install Logic
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
 
   const [proposalModal, setProposalModal] = useState<{leadId: string, visible: boolean}>({leadId: '', visible: false});
   const [historyModal, setHistoryModal] = useState<{leadId: string, visible: boolean}>({leadId: '', visible: false});
   const [tempProposalValue, setTempProposalValue] = useState<string>('');
 
-  const requestNotificationPermission = async () => {
+  const updateNotificationStatus = () => {
     if ('Notification' in window) {
-      const permission = await Notification.requestPermission();
-      console.log('Notification permission:', permission);
+      setNotificationStatus(Notification.permission);
     }
   };
 
-  const notifyNewLead = (companyName: string) => {
-    if ('Notification' in window && Notification.permission === 'granted') {
-      new Notification('Novo Lead Recebido! 🚀', {
+  const handleRequestNotifications = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      setNotificationStatus(permission);
+      if (permission === 'granted') {
+        notifyNewLead('Sistema de Alertas Ativado!');
+      }
+    } else {
+      alert("Seu navegador não suporta notificações.");
+    }
+  };
+
+  const notifyNewLead = async (companyName: string) => {
+    if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+    
+    if (Notification.permission === 'granted') {
+      const registration = await navigator.serviceWorker.ready;
+      registration.showNotification('Novo Lead Recebido! 🚀', {
         body: `A empresa ${companyName} acaba de entrar no sistema.`,
-        icon: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO'
-      });
+        icon: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO',
+        badge: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO',
+        vibrate: [200, 100, 200, 100, 200],
+        tag: 'new-lead-' + Date.now(),
+        data: { url: '/' },
+        requireInteraction: true
+      } as any);
     }
   };
 
   useEffect(() => {
     fetchData();
-    requestNotificationPermission();
+    updateNotificationStatus();
+
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
+    setIsIOS(ios);
 
     const leadsSub = supabase
       .channel('public:leads')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          notifyNewLead(payload.new.company_name);
-        }
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload) => {
+        notifyNewLead(payload.new.company_name);
         fetchData();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => fetchData())
       .subscribe();
 
     const collabSub = supabase
@@ -81,11 +107,6 @@ const App: React.FC = () => {
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    window.addEventListener('appinstalled', () => {
-      setIsInstallable(false);
-      setDeferredPrompt(null);
-    });
-
     return () => { 
       supabase.removeChannel(leadsSub); 
       supabase.removeChannel(collabSub); 
@@ -120,22 +141,18 @@ const App: React.FC = () => {
   }, [isDarkMode]);
 
   const handleInstallClick = async () => {
+    if (isIOS) {
+      alert("Para instalar no iOS: clique no botão de 'Compartilhar' lá embaixo e selecione 'Adicionar à Tela de Início'.");
+      return;
+    }
     if (!deferredPrompt) {
-      alert("Para instalar, use as opções do seu navegador (compartilhar > adicionar à tela de início no iOS ou os 3 pontos no Chrome/Android).");
+      alert("Acesse as configurações do seu navegador e selecione 'Instalar aplicativo'.");
       return;
     }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') setIsInstallable(false);
     setDeferredPrompt(null);
-  };
-
-  const logActivity = async (leadId: string, description: string) => {
-    await supabase.from('lead_history').insert([{
-      lead_id: leadId,
-      description,
-      user_name: currentUser?.name || 'Sistema'
-    }]);
   };
 
   const handleStatusChange = async (leadId: string, newStatus: LeadStatus) => {
@@ -148,26 +165,14 @@ const App: React.FC = () => {
     const oldLabel = STATUS_LABELS[lead.status].label;
     const newLabel = STATUS_LABELS[newStatus].label;
     await supabase.from('leads').update({ status: newStatus, last_update: new Date().toISOString() }).eq('id', leadId);
-    await logActivity(leadId, `Status alterado de "${oldLabel}" para "${newLabel}"`);
+    await supabase.from('lead_history').insert([{ lead_id: leadId, description: `Status alterado de "${oldLabel}" para "${newLabel}"`, user_name: currentUser?.name || 'Sistema' }]);
     fetchData();
   };
 
   const handleAssignCollaborator = async (leadId: string, collaboratorId: string) => {
-    const lead = leads.find(l => l.id === leadId);
     const collaborator = collaborators.find(c => c.id === collaboratorId);
     await supabase.from('leads').update({ collaborator_id: collaboratorId || null, last_update: new Date().toISOString() }).eq('id', leadId);
-    await logActivity(leadId, `Lead atribuído a: ${collaborator?.name || 'Ninguém'}`);
-    fetchData();
-  };
-
-  const handleProposalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const value = parseFloat(tempProposalValue);
-    if (isNaN(value)) return;
-    await supabase.from('leads').update({ status: 'proposta_enviada', proposal_value: value, last_update: new Date().toISOString() }).eq('id', proposalModal.leadId);
-    await logActivity(proposalModal.leadId, `Proposta enviada: R$ ${value.toLocaleString('pt-BR')}`);
-    setProposalModal({ leadId: '', visible: false });
-    setTempProposalValue('');
+    await supabase.from('lead_history').insert([{ lead_id: leadId, description: `Lead atribuído a: ${collaborator?.name || 'Ninguém'}`, user_name: currentUser?.name || 'Sistema' }]);
     fetchData();
   };
 
@@ -205,7 +210,7 @@ const App: React.FC = () => {
           ))}
         </nav>
         <div className="p-6 mt-auto border-t border-slate-100 dark:border-slate-800 space-y-2">
-          {isInstallable && (
+          {(isInstallable || isIOS) && (
             <button onClick={handleInstallClick} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 hover:opacity-80 transition-opacity border-2 border-emerald-100 dark:border-emerald-900/50">
               <div className="flex-shrink-0"><IconDownload /></div>
               <span className={`whitespace-nowrap ${isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}`}>INSTALAR APP</span>
@@ -231,12 +236,20 @@ const App: React.FC = () => {
             <input type="search" placeholder="PESQUISAR LEAD..." value={filter} onChange={(e) => setFilter(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-900 border-none px-4 py-2 md:px-6 md:py-3 text-[10px] md:text-xs font-bold focus:ring-1 focus:ring-slate-400 uppercase tracking-widest placeholder:text-slate-400" />
           </div>
           <div className="flex items-center gap-2 md:gap-4">
-            {isInstallable && (
-              <button onClick={handleInstallClick} className="flex items-center gap-2 bg-emerald-600 text-white px-3 py-2 text-[9px] font-black uppercase tracking-widest shadow-lg hover:opacity-90" title="Instalar Aplicativo">
-                <IconDownload />
-                <span className="hidden sm:inline">INSTALAR</span>
-              </button>
-            )}
+            <button 
+              onClick={handleRequestNotifications}
+              className={`flex items-center gap-2 px-3 py-2 text-[9px] font-black uppercase tracking-widest border-2 transition-all ${
+                notificationStatus === 'granted' 
+                  ? 'border-emerald-500 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20' 
+                  : notificationStatus === 'denied'
+                  ? 'border-red-500 text-red-600 bg-red-50 dark:bg-red-950/20'
+                  : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+              }`}
+              title={notificationStatus === 'granted' ? 'Alertas Ativos' : 'Ativar Alertas'}
+            >
+              <IconBell className={notificationStatus === 'granted' ? 'animate-bounce' : ''} />
+              <span className="hidden lg:inline">{notificationStatus === 'granted' ? 'ATIVOS' : 'ALERTAS'}</span>
+            </button>
             <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
               {isDarkMode ? <IconSun /> : <IconMoon />}
             </button>
@@ -290,7 +303,27 @@ const App: React.FC = () => {
               onViewHistory={(id) => setHistoryModal({ leadId: id, visible: true })}
             />
           )}
-          {activeTab === ViewMode.PERSONALIZATION && <Settings collaborators={collaborators} settings={settings} onAddCollaborator={fetchData} onRemoveCollaborator={fetchData} onUpdateSettings={setSettings} />}
+          {activeTab === ViewMode.PERSONALIZATION && (
+            <div className="space-y-8">
+              <Settings 
+                collaborators={collaborators} 
+                settings={settings} 
+                onAddCollaborator={fetchData} 
+                onRemoveCollaborator={fetchData} 
+                onUpdateSettings={setSettings} 
+              />
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
+                <h3 className="text-sm font-black uppercase mb-4 border-l-4 border-emerald-500 pl-3">Diagnóstico de Alertas</h3>
+                <p className="text-xs text-slate-400 mb-6 font-bold uppercase tracking-widest">Use o botão abaixo para testar se as notificações estão chegando no seu celular.</p>
+                <button 
+                  onClick={() => notifyNewLead('EMPRESA TESTE')} 
+                  className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-4 text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-transform"
+                >
+                  ENVIAR NOTIFICAÇÃO DE TESTE
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -302,24 +335,6 @@ const App: React.FC = () => {
           </button>
         ))}
       </nav>
-
-      {proposalModal.visible && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[110] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-sm p-8 border-t-8 border-emerald-500 shadow-2xl">
-            <h2 className="text-xl font-black uppercase tracking-tight mb-2">Valor da Proposta</h2>
-            <form onSubmit={handleProposalSubmit} className="space-y-6">
-               <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">R$</div>
-                  <input autoFocus required type="number" step="0.01" value={tempProposalValue} onChange={e => setTempProposalValue(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-950 border-2 border-slate-200 dark:border-slate-800 pl-12 pr-4 py-4 text-xl font-black focus:ring-0 focus:border-emerald-500 transition-colors" placeholder="0.00" />
-               </div>
-               <div className="flex gap-4">
-                 <button type="button" onClick={() => setProposalModal({leadId: '', visible: false})} className="flex-1 text-[10px] font-black uppercase py-4 border-2 border-slate-200 dark:border-slate-800">Cancelar</button>
-                 <button type="submit" className="flex-1 bg-emerald-600 text-white text-[10px] font-black uppercase py-4 shadow-lg">Confirmar</button>
-               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {historyModal.visible && (
         <HistoryModal leadId={historyModal.leadId} onClose={() => setHistoryModal({ leadId: '', visible: false })} />
