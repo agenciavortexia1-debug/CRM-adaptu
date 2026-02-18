@@ -31,7 +31,7 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>({ followUpThresholdDays: 7 });
   const [filter, setFilter] = useState('');
   
-  // PWA Install State
+  // PWA Install Logic
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
 
@@ -44,16 +44,25 @@ const App: React.FC = () => {
     const leadsSub = supabase.channel('public:leads').on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => fetchData()).subscribe();
     const collabSub = supabase.channel('public:collaborators').on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, () => fetchData()).subscribe();
 
-    // Listen for PWA install prompt
-    window.addEventListener('beforeinstallprompt', (e) => {
+    const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
       setIsInstallable(true);
+      console.log('PWA Install prompt is ready');
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    // If app is already installed
+    window.addEventListener('appinstalled', () => {
+      setIsInstallable(false);
+      setDeferredPrompt(null);
     });
 
     return () => { 
       supabase.removeChannel(leadsSub); 
       supabase.removeChannel(collabSub); 
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     };
   }, []);
 
@@ -84,7 +93,10 @@ const App: React.FC = () => {
   }, [isDarkMode]);
 
   const handleInstallClick = async () => {
-    if (!deferredPrompt) return;
+    if (!deferredPrompt) {
+      alert("Para instalar, clique nos três pontos (ou compartilhar) do seu navegador e escolha 'Adicionar à tela de início'.");
+      return;
+    }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
     if (outcome === 'accepted') {
@@ -169,9 +181,9 @@ const App: React.FC = () => {
         </nav>
         <div className="p-6 mt-auto border-t border-slate-100 dark:border-slate-800 space-y-2">
           {isInstallable && (
-            <button onClick={handleInstallClick} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20">
+            <button onClick={handleInstallClick} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 hover:opacity-80 transition-opacity border-2 border-emerald-100 dark:border-emerald-900/50">
               <div className="flex-shrink-0"><IconDownload /></div>
-              <span className={`whitespace-nowrap ${isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}`}>BAIXAR APP</span>
+              <span className={`whitespace-nowrap ${isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}`}>INSTALAR APP</span>
             </button>
           )}
           <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900">
@@ -193,10 +205,11 @@ const App: React.FC = () => {
           <div className="flex-1 max-w-xl mx-4">
             <input type="search" placeholder="PESQUISAR LEAD..." value={filter} onChange={(e) => setFilter(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-900 border-none px-4 py-2 md:px-6 md:py-3 text-[10px] md:text-xs font-bold focus:ring-1 focus:ring-slate-400 uppercase tracking-widest placeholder:text-slate-400" />
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             {isInstallable && (
-              <button onClick={handleInstallClick} className="md:hidden p-2 text-emerald-600" title="Baixar App">
+              <button onClick={handleInstallClick} className="flex items-center gap-2 bg-emerald-600 text-white px-3 py-2 text-[9px] font-black uppercase tracking-widest shadow-lg hover:opacity-90" title="Instalar Aplicativo">
                 <IconDownload />
+                <span className="hidden sm:inline">INSTALAR</span>
               </button>
             )}
             <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
