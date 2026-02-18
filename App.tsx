@@ -55,10 +55,13 @@ const App: React.FC = () => {
       const permission = await Notification.requestPermission();
       setNotificationStatus(permission);
       if (permission === 'granted') {
-        notifyNewLead('Sistema de Alertas Ativado!');
+        const registration = await navigator.serviceWorker.ready;
+        registration.showNotification('Alertas Ativados! ✅', {
+          body: 'Você receberá avisos de novos leads no topo do celular.',
+          icon: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO',
+          vibrate: [100, 50, 100],
+        } as any);
       }
-    } else {
-      alert("Seu navegador não suporta notificações.");
     }
   };
 
@@ -67,14 +70,17 @@ const App: React.FC = () => {
     
     if (Notification.permission === 'granted') {
       const registration = await navigator.serviceWorker.ready;
-      registration.showNotification('Novo Lead Recebido! 🚀', {
-        body: `A empresa ${companyName} acaba de entrar no sistema.`,
+      // Parâmetros para forçar "Heads-up" (banner no topo)
+      registration.showNotification('🚀 NOVO LEAD RECEBIDO!', {
+        body: `A empresa ${companyName.toUpperCase()} enviou dados agora. Clique para atender!`,
         icon: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO',
         badge: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO',
-        vibrate: [200, 100, 200, 100, 200],
-        tag: 'new-lead-' + Date.now(),
+        vibrate: [500, 110, 500, 110, 450, 110, 200, 110, 170, 40, 450, 110, 200, 110, 170, 40],
+        tag: 'new-lead-urgent',
+        renotify: true,
+        requireInteraction: true, // Mantém a notificação até o usuário interagir
         data: { url: '/' },
-        requireInteraction: true
+        timestamp: Date.now()
       } as any);
     }
   };
@@ -146,7 +152,7 @@ const App: React.FC = () => {
       return;
     }
     if (!deferredPrompt) {
-      alert("Acesse as configurações do seu navegador e selecione 'Instalar aplicativo'.");
+      alert("Abra o menu do seu navegador e clique em 'Instalar Aplicativo'.");
       return;
     }
     deferredPrompt.prompt();
@@ -158,10 +164,6 @@ const App: React.FC = () => {
   const handleStatusChange = async (leadId: string, newStatus: LeadStatus) => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead) return;
-    if (lead.status === 'reuniao_agendada' && newStatus === 'proposta_enviada') {
-      setProposalModal({ leadId, visible: true });
-      return;
-    }
     const oldLabel = STATUS_LABELS[lead.status].label;
     const newLabel = STATUS_LABELS[newStatus].label;
     await supabase.from('leads').update({ status: newStatus, last_update: new Date().toISOString() }).eq('id', leadId);
@@ -178,7 +180,7 @@ const App: React.FC = () => {
 
   const filteredLeads = useMemo(() => {
     const q = filter.toLowerCase();
-    return leads.filter(l => l.companyName.toLowerCase().includes(q) || l.segment.toLowerCase().includes(q));
+    return leads.filter(l => l.companyName.toLowerCase().includes(q) || (l.segment && l.segment.toLowerCase().includes(q)));
   }, [leads, filter]);
 
   const navItems = [
@@ -194,6 +196,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 font-sans">
+      {/* Sidebar Desktop */}
       <aside className={`hidden md:flex relative bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex-col h-screen sticky top-0 z-40 transition-all duration-300 ${isSidebarCollapsed ? 'w-20' : 'w-20 lg:w-64'}`}>
         <button onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)} className="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-12 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors z-50 shadow-sm border-l-0">
           {isSidebarCollapsed ? <IconChevronRight /> : <IconChevronLeft />}
@@ -228,6 +231,14 @@ const App: React.FC = () => {
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden pb-20 md:pb-0">
+        {/* Banner de Aviso Mobile para Notificações */}
+        {notificationStatus !== 'granted' && (
+          <div onClick={handleRequestNotifications} className="bg-red-600 text-white text-[10px] font-black uppercase tracking-widest py-3 px-4 flex items-center justify-between cursor-pointer animate-pulse z-50">
+            <span>⚠️ ATENÇÃO: ALERTAS DE LEADS DESATIVADOS. CLIQUE AQUI PARA ATIVAR.</span>
+            <IconBell className="w-3 h-3" />
+          </div>
+        )}
+
         <header className="h-16 md:h-20 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-8 sticky top-0 z-30">
           <div className="flex items-center gap-3">
              <span className="font-black text-xl tracking-tighter uppercase italic text-slate-900 dark:text-white">ADAPTU</span>
@@ -241,22 +252,15 @@ const App: React.FC = () => {
               className={`flex items-center gap-2 px-3 py-2 text-[9px] font-black uppercase tracking-widest border-2 transition-all ${
                 notificationStatus === 'granted' 
                   ? 'border-emerald-500 text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20' 
-                  : notificationStatus === 'denied'
-                  ? 'border-red-500 text-red-600 bg-red-50 dark:bg-red-950/20'
-                  : 'border-slate-200 text-slate-500 hover:bg-slate-50'
+                  : 'border-red-500 text-red-600 bg-red-50 dark:bg-red-950/20 animate-bounce'
               }`}
-              title={notificationStatus === 'granted' ? 'Alertas Ativos' : 'Ativar Alertas'}
             >
-              <IconBell className={notificationStatus === 'granted' ? 'animate-bounce' : ''} />
-              <span className="hidden lg:inline">{notificationStatus === 'granted' ? 'ATIVOS' : 'ALERTAS'}</span>
+              <IconBell className={notificationStatus === 'granted' ? '' : 'animate-ping'} />
+              <span className="hidden lg:inline">{notificationStatus === 'granted' ? 'ATIVOS' : 'ATIVAR'}</span>
             </button>
             <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
               {isDarkMode ? <IconSun /> : <IconMoon />}
             </button>
-            <div className="hidden md:flex flex-col items-end border-l border-slate-200 dark:border-slate-800 pl-4">
-               <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest leading-none mb-1">{currentUser.role === 'admin' ? 'ADMIN' : 'EQUIPE'}</span>
-               <span className="text-[11px] font-black uppercase leading-none">{currentUser.name}</span>
-            </div>
           </div>
         </header>
 
@@ -304,7 +308,7 @@ const App: React.FC = () => {
             />
           )}
           {activeTab === ViewMode.PERSONALIZATION && (
-            <div className="space-y-8">
+            <div className="space-y-8 pb-20">
               <Settings 
                 collaborators={collaborators} 
                 settings={settings} 
@@ -312,21 +316,48 @@ const App: React.FC = () => {
                 onRemoveCollaborator={fetchData} 
                 onUpdateSettings={setSettings} 
               />
-              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 shadow-sm">
-                <h3 className="text-sm font-black uppercase mb-4 border-l-4 border-emerald-500 pl-3">Diagnóstico de Alertas</h3>
-                <p className="text-xs text-slate-400 mb-6 font-bold uppercase tracking-widest">Use o botão abaixo para testar se as notificações estão chegando no seu celular.</p>
-                <button 
-                  onClick={() => notifyNewLead('EMPRESA TESTE')} 
-                  className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-4 text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-transform"
-                >
-                  ENVIAR NOTIFICAÇÃO DE TESTE
-                </button>
+              <div className="bg-white dark:bg-slate-900 border-4 border-slate-900 dark:border-white p-8 shadow-xl">
+                <h3 className="text-sm font-black uppercase mb-4 border-l-4 border-blue-500 pl-3">Central de Notificações</h3>
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Status da Permissão</p>
+                    <p className={`text-xs font-black uppercase ${notificationStatus === 'granted' ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {notificationStatus === 'granted' ? 'NOTIFICAÇÕES ATIVADAS ✅' : 'NOTIFICAÇÕES BLOQUEADAS OU NÃO AUTORIZADAS ❌'}
+                    </p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <button 
+                      onClick={handleRequestNotifications} 
+                      className="bg-blue-600 text-white px-6 py-4 text-[10px] font-black uppercase tracking-widest shadow-lg hover:opacity-90"
+                    >
+                      SOLICITAR PERMISSÃO NOVAMENTE
+                    </button>
+                    <button 
+                      onClick={() => notifyNewLead('EMPRESA TESTE')} 
+                      className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-4 text-[10px] font-black uppercase tracking-widest shadow-lg"
+                    >
+                      TESTAR ALERTA NO CELULAR
+                    </button>
+                  </div>
+
+                  <div className="mt-6 p-4 border-2 border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/50">
+                    <p className="text-[10px] font-black uppercase text-amber-600 mb-2 tracking-tight">Dicas para seu Time:</p>
+                    <ul className="text-[9px] font-bold text-slate-600 dark:text-slate-400 space-y-1 uppercase list-disc pl-4">
+                      <li>No iPhone, o app PRECISA ser "Adicionado à Tela de Início".</li>
+                      <li>Verifique se o celular não está no modo "Não Perturbe".</li>
+                      <li>O navegador precisa estar aberto (mesmo que em segundo plano).</li>
+                      <li>Mantenha o app instalado como atalho para melhor performance.</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           )}
         </div>
       </main>
 
+      {/* Nav Mobile */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex items-center justify-around px-2 z-50">
         {navItems.map((item) => (
           <button key={item.id} onClick={() => setActiveTab(item.id)} className={`flex flex-col items-center gap-1 p-2 ${activeTab === item.id ? 'text-slate-900 dark:text-white' : 'text-slate-400'}`}>
