@@ -40,7 +40,6 @@ const App: React.FC = () => {
   const [isIOS, setIsIOS] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
 
-  const [proposalModal, setProposalModal] = useState<{leadId: string, visible: boolean}>({leadId: '', visible: false});
   const [historyModal, setHistoryModal] = useState<{leadId: string, visible: boolean}>({leadId: '', visible: false});
 
   const updateNotificationStatus = () => {
@@ -54,30 +53,25 @@ const App: React.FC = () => {
       const permission = await Notification.requestPermission();
       setNotificationStatus(permission);
       if (permission === 'granted') {
-        notifyNewLead('Alertas Ativados com Sucesso!');
+        notifyNewLead('SISTEMA ATIVADO', 'Você receberá alertas estilo WhatsApp agora!');
       }
-    } else {
-      alert("Este navegador não suporta notificações.");
     }
   };
 
-  const notifyNewLead = async (companyName: string) => {
-    if (!('serviceWorker' in navigator) || !('Notification' in window)) return;
+  const notifyNewLead = async (title: string, body: string) => {
+    if (!('serviceWorker' in navigator)) return;
     
-    if (Notification.permission === 'granted') {
-      const registration = await navigator.serviceWorker.ready;
-      // Parâmetros cruciais para a notificação saltar na tela (Heads-up)
-      registration.showNotification('🚀 NOVO LEAD RECEBIDO!', {
-        body: `Empresa: ${companyName.toUpperCase()}\nToque para abrir o atendimento agora.`,
-        icon: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO',
-        badge: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO',
-        // Padrão de vibração estilo "chamada" para Android
-        vibrate: [500, 100, 500, 100, 500, 100, 500],
-        tag: 'lead-alert-urgent',
-        renotify: true,
-        requireInteraction: true, // Garante que a notificação fique visível até o usuário clicar
-        data: { url: '/' }
-      } as any);
+    // Mandamos a mensagem para o Service Worker, pois ele tem mais poder de "acordar" o celular
+    const registration = await navigator.serviceWorker.ready;
+    if (registration.active) {
+      registration.active.postMessage({
+        type: 'SHOW_NOTIFICATION',
+        payload: {
+          title: title,
+          body: body,
+          icon: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO'
+        }
+      });
     }
   };
 
@@ -94,7 +88,7 @@ const App: React.FC = () => {
     const leadsSub = supabase
       .channel('public:leads')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload) => {
-        notifyNewLead(payload.new.company_name);
+        notifyNewLead('🚀 NOVO LEAD RECEBIDO!', `Empresa: ${payload.new.company_name.toUpperCase()}`);
         fetchData();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => fetchData())
@@ -133,22 +127,18 @@ const App: React.FC = () => {
     }
   };
 
-  useEffect(() => {
-    if (isDarkMode) document.documentElement.classList.add('dark');
-    else document.documentElement.classList.remove('dark');
-  }, [isDarkMode]);
-
-  const handleInstallClick = async () => {
+  const handleInstallClick = () => {
     if (isIOS) {
-      alert("INSTALAÇÃO NO IPHONE:\n1. Clique no botão de Compartilhar (quadrado com seta pra cima)\n2. Role para baixo e clique em 'Adicionar à Tela de Início'\n3. Abra o app pela tela inicial para receber notificações.");
+      alert("IPHONE: Clique no ícone de 'Compartilhar' e depois em 'Adicionar à Tela de Início'.");
       return;
     }
     if (deferredPrompt) {
       deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') setDeferredPrompt(null);
+      deferredPrompt.userChoice.then((choice: any) => {
+        if (choice.outcome === 'accepted') setDeferredPrompt(null);
+      });
     } else {
-      alert("Para instalar:\nAbra o menu do navegador (três pontinhos) e clique em 'Instalar Aplicativo'.");
+      alert("Para instalar: Use o menu do seu navegador e clique em 'Instalar Aplicativo'.");
     }
   };
 
@@ -189,48 +179,46 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 dark:bg-slate-950 font-sans">
       {/* Sidebar Desktop */}
       <aside className={`hidden md:flex relative bg-white dark:bg-slate-950 border-r border-slate-200 dark:border-slate-800 flex-col h-screen sticky top-0 z-40 transition-all duration-300 ${isSidebarCollapsed ? 'w-20' : 'w-20 lg:w-64'}`}>
-        <div className="p-6 flex items-center gap-3 overflow-hidden">
-          <span className={`font-black text-xl tracking-tighter uppercase italic whitespace-nowrap ${isSidebarCollapsed ? 'hidden' : 'block'}`}>ADAPTU</span>
+        <div className="p-6">
+          <span className="font-black text-xl italic tracking-tighter uppercase">ADAPTU</span>
         </div>
         <nav className="flex-1 px-4 space-y-2 mt-4">
           {navItems.map((item) => (
             <button key={item.id} onClick={() => setActiveTab(item.id)} className={`w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-[0.2em] transition-all ${activeTab === item.id ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-lg' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900'}`}>
-              <div className="flex-shrink-0">{item.icon}</div>
-              <span className={`whitespace-nowrap ${isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}`}>{item.label}</span>
+              {item.icon}
+              <span className={isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}>{item.label}</span>
             </button>
           ))}
         </nav>
-        <div className="p-6 mt-auto border-t border-slate-100 dark:border-slate-800 space-y-2">
-          {!isStandalone && (
-            <button onClick={handleInstallClick} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 hover:opacity-80 transition-opacity border-2 border-emerald-100 dark:border-emerald-900/50">
-              <div className="flex-shrink-0"><IconDownload /></div>
-              <span className={`whitespace-nowrap ${isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}`}>INSTALAR APP</span>
-            </button>
-          )}
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900">
-            <div className="flex-shrink-0">{isDarkMode ? <IconSun /> : <IconMoon />}</div>
-            <span className={`whitespace-nowrap ${isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}`}>{isDarkMode ? 'MODO CLARO' : 'MODO ESCURO'}</span>
+        <div className="p-6 border-t border-slate-100 dark:border-slate-800 space-y-2">
+           <button onClick={handleInstallClick} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-emerald-600 bg-emerald-50 dark:bg-emerald-950/20 border-2 border-emerald-500 shadow-emerald-500/20 shadow-lg">
+            <IconDownload />
+            <span className={isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}>INSTALAR APP</span>
           </button>
-          <button onClick={() => setCurrentUser(null)} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20">
-            <div className="flex-shrink-0"><IconLogOut /></div>
-            <span className={`whitespace-nowrap ${isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}`}>SAIR</span>
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-900">
+            {isDarkMode ? <IconSun /> : <IconMoon />}
+            <span className={isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}>{isDarkMode ? 'CLARO' : 'ESCURO'}</span>
+          </button>
+          <button onClick={() => setCurrentUser(null)} className="w-full flex items-center gap-4 px-4 py-3 text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50">
+            <IconLogOut />
+            <span className={isSidebarCollapsed ? 'hidden' : 'hidden lg:block'}>SAIR</span>
           </button>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden pb-20 md:pb-0">
-        {/* Banner Global de Alerta */}
+        {/* Banner de Erro/Alerta - Prioridade Máxima */}
         {!isStandalone && (
-          <div onClick={handleInstallClick} className="bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest py-3 px-4 flex items-center justify-between cursor-pointer z-50">
-            <span>🔥 INSTALE O APP PARA RECEBER ALERTAS NO TOPO DO CELULAR</span>
-            <IconDownload className="w-4 h-4 animate-bounce" />
+          <div onClick={handleInstallClick} className="bg-emerald-600 text-white text-[10px] font-black uppercase tracking-widest py-3 px-4 flex items-center justify-between cursor-pointer z-[100] animate-pulse">
+            <span>🚀 INSTALAR APP PARA RECEBER ALERTAS NO TOPO</span>
+            <IconDownload className="w-4 h-4" />
           </div>
         )}
-        
+
         {notificationStatus !== 'granted' && isStandalone && (
-          <div onClick={handleRequestNotifications} className="bg-red-600 text-white text-[10px] font-black uppercase tracking-widest py-3 px-4 flex items-center justify-between cursor-pointer z-50">
-            <span>⚠️ ATIVAR ALERTAS DE NOVOS LEADS</span>
-            <IconBell className="w-4 h-4 animate-ping" />
+          <div onClick={handleRequestNotifications} className="bg-red-600 text-white text-[10px] font-black uppercase tracking-widest py-3 px-4 flex items-center justify-between cursor-pointer z-[100] animate-bounce">
+            <span>⚠️ TOQUE AQUI PARA ATIVAR OS ALERTAS DO CELULAR</span>
+            <IconBell className="w-4 h-4" />
           </div>
         )}
 
@@ -239,18 +227,16 @@ const App: React.FC = () => {
              <span className="font-black text-xl tracking-tighter uppercase italic text-slate-900 dark:text-white">ADAPTU</span>
           </div>
           <div className="flex-1 max-w-xl mx-4">
-            <input type="search" placeholder="PESQUISAR LEAD..." value={filter} onChange={(e) => setFilter(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-900 border-none px-4 py-2 md:px-6 md:py-3 text-[10px] md:text-xs font-bold focus:ring-1 focus:ring-slate-400 uppercase tracking-widest placeholder:text-slate-400" />
+            <input type="search" placeholder="PESQUISAR..." value={filter} onChange={(e) => setFilter(e.target.value)} className="w-full bg-slate-100 dark:bg-slate-900 border-none px-4 py-2 text-[10px] font-bold uppercase tracking-widest" />
           </div>
-          <div className="flex items-center gap-2 md:gap-4">
-            <button 
-              onClick={handleRequestNotifications}
-              className={`p-2 transition-all ${notificationStatus === 'granted' ? 'text-emerald-500' : 'text-red-500 animate-pulse'}`}
-            >
+          <div className="flex items-center gap-4">
+            <button onClick={handleRequestNotifications} className={`p-2 ${notificationStatus === 'granted' ? 'text-emerald-500' : 'text-red-500 animate-pulse'}`}>
               <IconBell />
             </button>
-            <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors">
-              {isDarkMode ? <IconSun /> : <IconMoon />}
-            </button>
+            <div className="hidden md:block text-right">
+              <p className="text-[10px] font-black uppercase text-slate-400">{currentUser.role}</p>
+              <p className="text-[11px] font-black uppercase">{currentUser.name}</p>
+            </div>
           </div>
         </header>
 
@@ -261,21 +247,14 @@ const App: React.FC = () => {
                 const leadsInStatus = filteredLeads.filter(l => l.status === statusKey);
                 return (
                   <div key={statusKey} className="flex-shrink-0 w-full md:w-80 flex flex-col snap-center">
-                    <div className={`h-1 mb-3 md:mb-4 ${statusInfo.color}`} />
+                    <div className={`h-1 mb-4 ${statusInfo.color}`} />
                     <div className="flex justify-between items-center mb-4">
-                      <h3 className="text-[10px] md:text-[11px] font-black uppercase tracking-[0.15em] text-slate-700 dark:text-slate-300">{statusInfo.label}</h3>
-                      <span className="bg-slate-200 dark:bg-slate-800 text-slate-900 dark:text-slate-100 px-2.5 py-1 text-[10px] font-black border border-slate-300 dark:border-slate-700">{leadsInStatus.length}</span>
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-500">{statusInfo.label}</h3>
+                      <span className="bg-slate-200 dark:bg-slate-800 px-2 py-0.5 text-[10px] font-black">{leadsInStatus.length}</span>
                     </div>
                     <div className="space-y-4">
                       {leadsInStatus.map(lead => (
-                        <LeadCard 
-                          key={lead.id} 
-                          lead={lead} 
-                          collaborators={collaborators}
-                          onStatusChange={handleStatusChange} 
-                          onAssignCollaborator={handleAssignCollaborator}
-                          onViewHistory={(id) => setHistoryModal({ leadId: id, visible: true })}
-                        />
+                        <LeadCard key={lead.id} lead={lead} collaborators={collaborators} onStatusChange={handleStatusChange} onAssignCollaborator={handleAssignCollaborator} onViewHistory={(id) => setHistoryModal({ leadId: id, visible: true })} />
                       ))}
                     </div>
                   </div>
@@ -288,40 +267,27 @@ const App: React.FC = () => {
           {activeTab === ViewMode.USER_MANAGEMENT && <UserManagement />}
           {activeTab === ViewMode.HISTORY && <HistoryGlobal />}
           {activeTab === ViewMode.FOLLOW_UP && (
-            <FollowUp 
-              leads={leads} 
-              collaborators={collaborators} 
-              settings={settings} 
-              onStatusChange={handleStatusChange} 
-              onAssignCollaborator={handleAssignCollaborator} 
-              onViewHistory={(id) => setHistoryModal({ leadId: id, visible: true })}
-            />
+            <FollowUp leads={leads} collaborators={collaborators} settings={settings} onStatusChange={handleStatusChange} onAssignCollaborator={handleAssignCollaborator} onViewHistory={(id) => setHistoryModal({ leadId: id, visible: true })} />
           )}
           {activeTab === ViewMode.PERSONALIZATION && (
             <div className="space-y-8 pb-20">
-              <Settings 
-                collaborators={collaborators} 
-                settings={settings} 
-                onAddCollaborator={fetchData} 
-                onRemoveCollaborator={fetchData} 
-                onUpdateSettings={setSettings} 
-              />
+              <Settings collaborators={collaborators} settings={settings} onAddCollaborator={fetchData} onRemoveCollaborator={fetchData} onUpdateSettings={setSettings} />
+              
               <div className="bg-white dark:bg-slate-900 border-4 border-slate-900 dark:border-white p-8 shadow-xl">
-                <h3 className="text-sm font-black uppercase mb-4 border-l-4 border-emerald-500 pl-3">Central de Alertas</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <button 
-                    onClick={() => notifyNewLead('EMPRESA TESTE')} 
-                    className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-4 text-[10px] font-black uppercase tracking-widest shadow-lg active:scale-95 transition-transform"
-                  >
-                    TESTAR NOTIFICAÇÃO ESTILO WHATSAPP
-                  </button>
-                  <button 
-                    onClick={handleInstallClick} 
-                    className="bg-emerald-600 text-white px-6 py-4 text-[10px] font-black uppercase tracking-widest shadow-lg"
-                  >
-                    AJUDA PARA INSTALAR NO CELULAR
-                  </button>
-                </div>
+                <h3 className="text-sm font-black uppercase mb-4 border-l-4 border-emerald-500 pl-3">TESTE DE ALERTA REAL</h3>
+                <p className="text-[10px] font-bold text-slate-500 mb-6 uppercase tracking-widest leading-relaxed">
+                  Para testar: Clique no botão abaixo e **bloqueie o celular imediatamente**. <br/>
+                  A notificação aparecerá em 5 segundos no topo da tela.
+                </p>
+                <button 
+                  onClick={() => {
+                    alert("Teste iniciado! Bloqueie a tela agora.");
+                    setTimeout(() => notifyNewLead('🔔 TESTE DE ALERTA', 'Este é o banner que aparecerá para novos leads!'), 5000);
+                  }}
+                  className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-8 py-4 text-xs font-black uppercase tracking-widest shadow-lg active:scale-95 transition-transform w-full md:w-auto"
+                >
+                  TESTAR EM 5 SEGUNDOS (BLOQUEIE A TELA)
+                </button>
               </div>
             </div>
           )}
