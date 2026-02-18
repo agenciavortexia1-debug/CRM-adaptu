@@ -39,21 +39,48 @@ const App: React.FC = () => {
   const [historyModal, setHistoryModal] = useState<{leadId: string, visible: boolean}>({leadId: '', visible: false});
   const [tempProposalValue, setTempProposalValue] = useState<string>('');
 
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window) {
+      const permission = await Notification.requestPermission();
+      console.log('Notification permission:', permission);
+    }
+  };
+
+  const notifyNewLead = (companyName: string) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      new Notification('Novo Lead Recebido! 🚀', {
+        body: `A empresa ${companyName} acaba de entrar no sistema.`,
+        icon: 'https://lh3.googleusercontent.com/d/1suIG32h-jC6OdCnx5Xfz9CzGi7gKqEkO'
+      });
+    }
+  };
+
   useEffect(() => {
     fetchData();
-    const leadsSub = supabase.channel('public:leads').on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, () => fetchData()).subscribe();
-    const collabSub = supabase.channel('public:collaborators').on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, () => fetchData()).subscribe();
+    requestNotificationPermission();
+
+    const leadsSub = supabase
+      .channel('public:leads')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'leads' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          notifyNewLead(payload.new.company_name);
+        }
+        fetchData();
+      })
+      .subscribe();
+
+    const collabSub = supabase
+      .channel('public:collaborators')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'collaborators' }, () => fetchData())
+      .subscribe();
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
       setIsInstallable(true);
-      console.log('PWA Install prompt is ready');
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    // If app is already installed
     window.addEventListener('appinstalled', () => {
       setIsInstallable(false);
       setDeferredPrompt(null);
@@ -94,14 +121,12 @@ const App: React.FC = () => {
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
-      alert("Para instalar, clique nos três pontos (ou compartilhar) do seu navegador e escolha 'Adicionar à tela de início'.");
+      alert("Para instalar, use as opções do seu navegador (compartilhar > adicionar à tela de início no iOS ou os 3 pontos no Chrome/Android).");
       return;
     }
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') {
-      setIsInstallable(false);
-    }
+    if (outcome === 'accepted') setIsInstallable(false);
     setDeferredPrompt(null);
   };
 
