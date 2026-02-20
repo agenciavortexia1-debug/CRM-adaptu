@@ -16,6 +16,7 @@ import { UserManagement } from './components/UserManagement';
 import { HistoryGlobal } from './components/HistoryGlobal';
 import { Login } from './components/Login';
 import { HistoryModal } from './components/HistoryModal';
+import { registerPush } from './src/utils/pushManager';
 
 const SUPABASE_URL = 'https://qxihfpviufppdscsetbs.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InF4aWhmcHZpdWZwcGRzY3NldGJzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MzMxMzgsImV4cCI6MjA4NjUwOTEzOH0.YyvQh61ow7aP2670Ct157K_mBZjyvPZdvbtEdqkReB8';
@@ -50,9 +51,9 @@ const App: React.FC = () => {
 
   const handleRequestNotifications = async () => {
     if ('Notification' in window) {
-      const permission = await Notification.requestPermission();
-      setNotificationStatus(permission);
-      if (permission === 'granted') {
+      const success = await registerPush();
+      updateNotificationStatus();
+      if (success) {
         notifyNewLead('SISTEMA ATIVADO', 'Você receberá alertas estilo WhatsApp agora!');
       }
     }
@@ -88,6 +89,13 @@ const App: React.FC = () => {
     const leadsSub = supabase
       .channel('public:leads')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'leads' }, (payload) => {
+        // Dispara notificação PUSH real via API para todos os dispositivos
+        fetch('/api/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company: payload.new.company_name })
+        }).catch(err => console.error("Push notify error:", err));
+        
         notifyNewLead('🚀 NOVO LEAD RECEBIDO!', `Empresa: ${payload.new.company_name.toUpperCase()}`);
         fetchData();
       })
@@ -217,7 +225,7 @@ const App: React.FC = () => {
 
         {notificationStatus !== 'granted' && isStandalone && (
           <div onClick={handleRequestNotifications} className="bg-red-600 text-white text-[10px] font-black uppercase tracking-widest py-3 px-4 flex items-center justify-between cursor-pointer z-[100] animate-bounce">
-            <span>⚠️ TOQUE AQUI PARA ATIVAR OS ALERTAS DO CELULAR</span>
+            <span>⚠️ TOQUE AQUI PARA ATIVAR OS ALERTAS DO CELULAR (ENABLE NOTIFICATIONS)</span>
             <IconBell className="w-4 h-4" />
           </div>
         )}
@@ -280,13 +288,18 @@ const App: React.FC = () => {
                   A notificação aparecerá em 5 segundos no topo da tela.
                 </p>
                 <button 
-                  onClick={() => {
-                    alert("Teste iniciado! Bloqueie a tela agora.");
-                    setTimeout(() => notifyNewLead('🔔 TESTE DE ALERTA', 'Este é o banner que aparecerá para novos leads!'), 5000);
+                  onClick={async () => {
+                    const res = await fetch('/api/notify', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ company: 'EMPRESA TESTE' })
+                    });
+                    const data = await res.json();
+                    alert(`Teste enviado! Destinatários: ${data.sent || 0}`);
                   }}
                   className="bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-8 py-4 text-xs font-black uppercase tracking-widest shadow-lg active:scale-95 transition-transform w-full md:w-auto"
                 >
-                  TESTAR EM 5 SEGUNDOS (BLOQUEIE A TELA)
+                  TESTAR PUSH REAL (TODOS DISPOSITIVOS)
                 </button>
               </div>
             </div>

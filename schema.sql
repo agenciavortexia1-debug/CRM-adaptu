@@ -43,7 +43,14 @@ CREATE TABLE IF NOT EXISTS lead_history (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. INSERIR SEU ACESSO ADMIN INICIAL (admin123)
+-- 6. Tabela para Push Notifications
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  subscription JSONB NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. INSERIR SEU ACESSO ADMIN INICIAL (admin123)
 -- O comando ON CONFLICT evita o erro se o usuário já existir
 INSERT INTO system_users (name, password_hash, role)
 VALUES ('ADMINISTRADOR', 'admin123', 'admin')
