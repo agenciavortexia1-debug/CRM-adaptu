@@ -226,12 +226,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {notificationStatus !== 'granted' && isStandalone && (
-          <div onClick={handleRequestNotifications} className="bg-red-600 text-white text-[10px] font-black uppercase tracking-widest py-3 px-4 flex items-center justify-between cursor-pointer z-[100] animate-bounce">
-            <span>⚠️ TOQUE AQUI PARA ATIVAR OS ALERTAS DO CELULAR (ENABLE NOTIFICATIONS)</span>
-            <IconBell className="w-4 h-4" />
-          </div>
-        )}
+        {/* Banner de notificações removido */}
 
         <header className="h-16 md:h-20 bg-white dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between px-4 md:px-8 sticky top-0 z-30">
           <div className="flex items-center gap-3">
@@ -290,6 +285,13 @@ const App: React.FC = () => {
                   Para testar: Clique no botão abaixo e **bloqueie o celular imediatamente**. <br/>
                   A notificação aparecerá em 5 segundos no topo da tela.
                 </p>
+                <button 
+                  onClick={handleRequestNotifications}
+                  className="bg-emerald-600 text-white px-8 py-4 text-xs font-black uppercase tracking-widest shadow-lg active:scale-95 transition-transform w-full md:w-auto mb-4"
+                >
+                  {notificationStatus === 'granted' ? '✅ ALERTAS ATIVOS NESTE APARELHO' : '🔔 ATIVAR ALERTAS (ESTILO WHATSAPP)'}
+                </button>
+
                 <button 
                   onClick={async () => {
                     const res = await fetch('/api/notify', {

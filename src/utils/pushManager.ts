@@ -6,23 +6,37 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export async function registerPush() {
-  if (!("serviceWorker" in navigator)) return;
+  if (!("serviceWorker" in navigator)) {
+    console.error("Service Worker not supported in this browser");
+    return false;
+  }
 
   try {
+    console.log("Starting push registration...");
     const subscription = await subscribeToPush();
+    
+    if (!subscription) {
+      console.error("No subscription object returned");
+      return false;
+    }
+
     const subData = JSON.parse(JSON.stringify(subscription));
+    console.log("Subscription obtained:", subData.endpoint);
     
     // Salva no Supabase usando o endpoint como chave única
-    const { error } = await supabase.from('push_subscriptions').upsert({ 
+    const { data, error } = await supabase.from('push_subscriptions').upsert({ 
       subscription: subData 
-    }, { onConflict: 'subscription' });
+    }, { onConflict: 'subscription' }).select();
     
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase upsert error:", error);
+      throw error;
+    }
     
-    console.log("Push registered and saved to Supabase");
+    console.log("Push registered and saved to Supabase:", data);
     return true;
   } catch (error) {
-    console.error("Push registration failed:", error);
+    console.error("Push registration failed detailed error:", error);
     return false;
   }
 }
