@@ -43,10 +43,10 @@ CREATE TABLE IF NOT EXISTS lead_history (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 6. Tabela para Push Notifications
+-- 6. Tabela para Push Notifications (Melhorada)
 CREATE TABLE IF NOT EXISTS push_subscriptions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  subscription JSONB NOT NULL UNIQUE,
+  endpoint TEXT PRIMARY KEY,
+  subscription JSONB NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

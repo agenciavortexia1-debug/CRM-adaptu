@@ -23,10 +23,11 @@ export async function registerPush() {
     const subData = JSON.parse(JSON.stringify(subscription));
     console.log("Subscription obtained:", subData.endpoint);
     
-    // Salva no Supabase usando o endpoint como chave única
+    // Salva no Supabase usando o endpoint como chave primária
     const { data, error } = await supabase.from('push_subscriptions').upsert({ 
+      endpoint: subData.endpoint,
       subscription: subData 
-    }, { onConflict: 'subscription' }).select();
+    }).select();
     
     if (error) {
       console.error("Supabase upsert error:", error);
