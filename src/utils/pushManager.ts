@@ -10,11 +10,14 @@ export async function registerPush() {
 
   try {
     const subscription = await subscribeToPush();
+    const subData = JSON.parse(JSON.stringify(subscription));
     
-    // Salva no Supabase para persistência real
-    await supabase.from('push_subscriptions').upsert({ 
-      subscription: subscription 
+    // Salva no Supabase usando o endpoint como chave única
+    const { error } = await supabase.from('push_subscriptions').upsert({ 
+      subscription: subData 
     }, { onConflict: 'subscription' });
+    
+    if (error) throw error;
     
     console.log("Push registered and saved to Supabase");
     return true;

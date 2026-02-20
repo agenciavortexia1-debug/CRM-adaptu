@@ -14,7 +14,7 @@ export async function subscribeToPush() {
   const subscription = await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(
-      import.meta.env.VITE_VAPID_PUBLIC_KEY
+      "BAgJktjT0hDpog_z3HpEakDjnvJjEI2DelSnW7lwUZTl_ZvKblveLxdc8x3pwXoX_r-BTipY18Ye1ymR5VT6pms"
     ),
   });
 

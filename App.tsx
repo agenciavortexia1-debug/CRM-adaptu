@@ -52,9 +52,12 @@ const App: React.FC = () => {
   const handleRequestNotifications = async () => {
     if ('Notification' in window) {
       const success = await registerPush();
-      updateNotificationStatus();
       if (success) {
+        updateNotificationStatus();
         notifyNewLead('SISTEMA ATIVADO', 'Você receberá alertas estilo WhatsApp agora!');
+        alert("✅ Notificações ativadas com sucesso!");
+      } else {
+        alert("❌ Erro ao ativar notificações. Verifique se você permitiu no navegador.");
       }
     }
   };
